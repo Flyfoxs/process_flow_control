@@ -1,13 +1,18 @@
-from lightgbm import LGBMRegressor
-from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import StratifiedKFold
 import numpy as np
 import pandas as pd
-from xgboost import XGBRegressor
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+from keras.layers import BatchNormalization
+from keras.layers.advanced_activations import LeakyReLU
+from keras.layers.core import Dense, Activation, Dropout
+from keras.models import Sequential
+from keras.optimizers import Adam
+from sklearn.metrics import mean_squared_error
 
+from code_felix.feature.config import label_name_list
+from code_felix.feature.read_file import get_train, get_test, get_label
 from code_felix.utils_.other import save_result_for_ensemble
-from code_felix.utils_.util_log import *
-from code_felix.feature.read_file import *
+from code_felix.utils_.util_log import logger
+
 
 def learning(model ,Xtrain ,y ,Xtest,label_name, number_of_folds= 5, seed = 777):
     train_index = Xtrain.index
@@ -16,6 +21,7 @@ def learning(model ,Xtrain ,y ,Xtest,label_name, number_of_folds= 5, seed = 777)
     Xtrain = Xtrain.reset_index(drop=True)
     Xtest  = Xtest.reset_index(drop=True)
     y = y.reset_index(drop=True)
+    y_train = y
 
     logger.debug(f'train:{Xtrain.shape}, label:{y.shape}, test:{Xtest.shape}')
     print( 'Model: %s' % model)
@@ -25,6 +31,22 @@ def learning(model ,Xtrain ,y ,Xtest,label_name, number_of_folds= 5, seed = 777)
     test_predict_y = np.zeros((Xtest.shape[0]))
     learn_loss = 0.
     """ Important to set seed """
+
+    tmp_model = './output//model/checkpoint/dnn_best_tmp.hdf5'
+    check_best = ModelCheckpoint(filepath=tmp_model,
+                                 monitor='val_loss', verbose=1,
+                                 save_best_only=True, mode='min')
+
+    early_stop = EarlyStopping(monitor='val_loss', verbose=1,
+                               patience=100,
+                               )
+    reduce = ReduceLROnPlateau(monitor='val_loss', factor=0.2,
+                               patience=30, verbose=1, mode='min')
+
+    logger.debug(f'y_train.shape:{y_train.shape}')
+
+
+
     from sklearn.model_selection import KFold
     skf = KFold(n_splits = number_of_folds ,shuffle=True, random_state=seed)
     """ Each fold cross validation """
@@ -33,14 +55,19 @@ def learning(model ,Xtrain ,y ,Xtest,label_name, number_of_folds= 5, seed = 777)
         logger.debug(f'Fold#{i + 1}' )
         #print(train_idx)
 
-        model.fit(Xtrain.values[train_idx], y[train_idx],
-                  eval_set=[(Xtrain.values[train_idx], y[train_idx]),
-                            (Xtrain.values[val_idx],  y[val_idx])
-                            ],
+        history = model.fit(Xtrain.values[train_idx], y[train_idx],
+                            validation_data=((Xtrain.values[val_idx],  y[val_idx])),
+                            #callbacks=[check_best, early_stop, reduce],
+                            batch_size=8,
+                            # steps_per_epoch= len(X_test)//128,
+                            epochs=2,
+                            verbose=1,
+                            )
 
-                  early_stopping_rounds=50, verbose=True)
+        best_epoch = np.array(history.history['val_loss']).argmin() + 1
+        best_score = np.array(history.history['val_loss']).min()
 
-        best_epoch, best_score = evaluate_score(model)
+
         logger.debug(f"Fold#{i+1} arrive {best_score} at {best_epoch}")
 
         scoring = model.predict(Xtrain.values[val_idx])
@@ -86,37 +113,46 @@ def learning(model ,Xtrain ,y ,Xtest,label_name, number_of_folds= 5, seed = 777)
                              test=test_bk,
                              label=label_bk,
                              )
-    return avg_loss
 
-def evaluate_score(model):
-    if isinstance(model, LGBMRegressor):
-        best_epoch = model.best_iteration_
-        best_score = model.best_score_
 
-    elif isinstance(model, XGBRegressor):
-        results = model.evals_result()
-        best_epoch = np.array(results['validation_1']['rmse']).argmin() + 1
-        best_score = np.array(results['validation_1']['rmse']).min()
-    else:
-        return None, None
-    return best_epoch, best_score
+def get_model(input_dim):
+    logger.debug(f'The input size for DNN is:{input_dim}')
+    dropout= 0.5
+    lr =0.0001
+    model = Sequential()
+    model.add(Dense(int(input_dim*1.5), input_shape=(input_dim,)))
+
+    # model.add(Dropout(dropout))
+
+
+    # model.add(Dense(100))
+    # model.add(LeakyReLU(alpha=0.01))
+    # model.add(BatchNormalization())
+    # model.add(Dropout(dropout))
+
+
+    model.add(Dense(1, kernel_initializer='normal'))
+
+    # model.compile(optimizer="sgd", loss="mse")
+    adam = Adam(lr=lr)
+    model.compile(loss='mean_squared_error', optimizer=adam,
+                    #metrics=['categorical_crossentropy'],
+                  )
+    model.summary()
+
+
+
+    return  model
+
 
 
 if __name__ == '__main__':
+    for label_name in label_name_list:
+        # label_name = 'phosphorus_content'
 
-    from code_felix.train.xgb import get_model
+        train = get_train(4)
+        test = get_test(4)
+        model = get_model(train.shape[1])
+        label = get_label(label_name)
 
-    label_name = 'phosphorus_content'
-
-    model = get_model(200)
-
-
-    train = get_train(4)
-    test = get_test(4)
-
-    label = get_label(label_name)
-
-
-
-
-    learning(model, train, label, test, label_name )
+        learning(model, train, label, test, label_name)

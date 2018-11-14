@@ -16,6 +16,7 @@ def get_top_n(top=1):
     for feaute_name, file_list in result.items():
         file_list = sorted(file_list, key=lambda val: val.split('.')[-2])
         new_result[feaute_name] = file_list[0]
+    logger.debug(f'Top file list:{new_result}')
     return new_result
 
 

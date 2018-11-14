@@ -2,7 +2,7 @@ from lightgbm import LGBMRegressor
 from code_felix.feature.read_file import *
 from code_felix.train.Kfold import learning
 
-def get_model(n_estimators=200):
+def get_model(n_estimators=200, num_leaves=31):
     gbm = LGBMRegressor(
         #n_estimators=100,
         #learning_rate=0.08, gamma=0, subsample=0.75,
@@ -12,6 +12,7 @@ def get_model(n_estimators=200):
         objective= 'regression_l2',
         metric = [ 'rmse'],
         verbose = -1,
+        num_leaves=num_leaves,
 
         # eval_metric="merror",
         #eval_metric='rmse',
@@ -40,19 +41,30 @@ def get_model(n_estimators=200):
     return gbm
 
 
+def train(n_estimators=200, num_leaves=31, gap_hours=4):
+    args = locals()
+    try:
+        for label_name in label_name_list:
+            #label_name = 'phosphorus_content'
+
+            model = get_model(n_estimators, num_leaves)
+
+
+            train = get_train(gap_hours)
+            test = get_test(gap_hours)
+
+            label = get_label(label_name)
+
+            loss = learning(model, train, label, test, label_name )
+            logger.debug(f"The Loss for {label_name}:{'{:,.6f}'.format(loss)} {args} ")
+    except Exception as e:
+        logger.error(f"Error is happen with {args}")
+        logger.error(e)
+
 
 if __name__ == '__main__':
 
-    for label_name in label_name_list:
-        #label_name = 'phosphorus_content'
-
-        model = get_model(200)
-
-
-        train = get_train(4)
-        test = get_test(4)
-
-        label = get_label(label_name)
-
-
-        learning(model, train, label, test, label_name )
+    for n_estimators in [100, 200, 300]:
+        for num_leaves in [31, 63, 70, 80, 100]:
+            for gap_hours in [4, 5, 6]:
+                train(n_estimators, num_leaves, gap_hours)

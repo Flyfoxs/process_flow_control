@@ -33,7 +33,7 @@ def get_model(n_estimators=200):
         # min_child_weight=1,
         # colsample_bylevel=1,
         # scale_pos_weight=1,
-        **dict(get_gpu_paras('xgb'))
+        #**dict(get_gpu_paras('xgb'))
 
     )
     return gbm
@@ -43,15 +43,13 @@ def get_model(n_estimators=200):
 if __name__ == '__main__':
 
     for label_name in label_name_list:
-        #label_name = 'phosphorus_content'
+        # label_name = 'phosphorus_content'
 
         model = get_model(200)
-
 
         train = get_train(4)
         test = get_test(4)
 
         label = get_label(label_name)
 
-
-        learning(model, train, label, test, label_name )
+        learning(model, train, label, test, label_name)

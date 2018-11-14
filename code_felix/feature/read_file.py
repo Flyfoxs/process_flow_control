@@ -115,7 +115,9 @@ def get_report_time(row):
 
 
 def get_train(hours_gap):
-    return get_feature(hours_gap)[:144]
+    train =  get_feature(hours_gap)[:144]
+    logger.debug(f'The size of train is:{train.shape}')
+    return train
 
 def get_test(hours_gap):
     return get_feature(hours_gap)[144:]
